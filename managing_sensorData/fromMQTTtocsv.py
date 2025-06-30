@@ -9,7 +9,7 @@ MQTT_BROKER = "localhost"
 MQTT_PORT = 1883
 MQTT_TOPICS = ["zigbee2mqtt/switch_1","zigbee2mqtt/door_1","zigbee2mqtt/door_2","zigbee2mqtt/door_3","zigbee2mqtt/door_4","zigbee2mqtt/temp_1"]
 
-DATA_DIR = "sensor_data"
+DATA_DIR = "../sensor_data"
 os.makedirs(DATA_DIR, exist_ok=True)
 
 def topic_filename(topic):

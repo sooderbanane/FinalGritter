@@ -5,8 +5,8 @@ import pandas as pd
 from sklearn.ensemble import IsolationForest
 
 # ─── CONFIG ────────────────────────────────────────────────────────────────────
-DATA_DIR = 'sensor_data'                # where your raw sensor CSVs live
-PUBLIC_DIR = 'public'                   # Next.js serves files here
+DATA_DIR = '../sensor_data'                # where your raw sensor CSVs live
+PUBLIC_DIR = '../frontend/gritter-frontend/public'                   # Next.js serves files here
 COUNT_FILE = os.path.join(PUBLIC_DIR, 'minute_counts.csv')
 ANOM_FILE  = os.path.join(PUBLIC_DIR, 'minute_anomalies.csv')
 CHECK_INTERVAL = 10                     # seconds between checks
@@ -19,19 +19,19 @@ while True:
     now = datetime.now()
     print(f"\n[+] Checking data at {now.isoformat(timespec='seconds')}")
 
-    # 1) Load & filter all sensor CSVs
-    all_events = []
+    # 1) CSV laden 
+    all_events = [] # holt sich alle csv eventes 
     for fname in os.listdir(DATA_DIR):
         if not fname.endswith('.csv'):
             continue
         path = os.path.join(DATA_DIR, fname)
         df = pd.read_csv(path, parse_dates=['timestamp'])
 
-        # drop duplicate timestamp column if present
+        # unnoetige falsche value muss weg
         if 'timestamp.1' in df.columns:
             df = df.drop(columns=['timestamp.1'])
 
-        # filter rows: only door-open events or button-press events
+        # schaut nach richtiger reihe 
         if 'contact' in df.columns:
             df = df[df['contact'] == True]
         elif 'action' in df.columns:
@@ -47,47 +47,41 @@ while True:
         time.sleep(CHECK_INTERVAL)
         continue
 
-    # 2) Concatenate and group by minute
     events = pd.concat(all_events, ignore_index=True)
-    events['min'] = events['timestamp'].dt.floor('T')  # 'T' = minute
+    events['min'] = events['timestamp'].dt.floor('min')  # damals 'T' wurde modern mit min ersetzt
     min_counts = (
-        events
-        .groupby('min')
-        .size()
-        .reset_index(name='request_count')
+        events.groupby('min').size().reset_index(name='request_count')
     )
 
-    # 3) Save the full minute_counts.csv (overwrites every run)
     min_counts['is_anomaly'] = False  # placeholder
     min_counts.to_csv(COUNT_FILE, index=False)
 
-    # 4) Detect anomalies once we have enough history
     if len(min_counts) >= MIN_HISTORY:
         last_min = min_counts['min'].max()
         if last_min not in checked_mins and last_min < now.replace(second=0, microsecond=0):
             train = min_counts.iloc[:-1]
             test  = min_counts.iloc[-1:].copy()
 
-            # train Isolation Forest
+            # iso forrest trainieren damit er auf unsere vorgaben entspricht 
             model = IsolationForest(contamination=0.05, random_state=42)
             model.fit(train[['request_count']])
 
-            # predict the last minute
+            # predicte die letzte min (eig stunde aber besser fuer demo zwecke)
             test['is_anomaly'] = model.predict(test[['request_count']]) == -1
 
-            # update the full counts CSV with anomaly flag
+            # update durch ganze 
             min_counts.loc[min_counts['min'] == last_min, 'is_anomaly'] = test.at[test.index[0], 'is_anomaly']
             min_counts.to_csv(COUNT_FILE, index=False)
 
             # append anomalous minute to anomalies CSV if it truly is one
             if test.at[test.index[0], 'is_anomaly']:
                 print(f"⚠️ ANOMALY at {last_min}: {test.at[test.index[0], 'request_count']} events")
-                # write header only if file doesn't exist
+                # mach einen saftigen header wenns keinen hat 
                 write_header = not os.path.exists(ANOM_FILE)
                 test[['min', 'request_count', 'is_anomaly']].to_csv(
                     ANOM_FILE,
-                    mode='a',
-                    header=write_header,
+                    mode='a', # a = append mode
+                    header=write_header, # mach einen header 
                     index=False
                 )
             else:
