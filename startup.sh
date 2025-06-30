@@ -30,6 +30,7 @@ trap cleanup SIGINT SIGTERM
 
 echo "🟢 Starting Zigbee2MQTT…"
 # If you need to cd into its folder, do: cd /path/to/zigbee2mqtt
+cd ~
 $ZIGBEE2MQTT_CMD &
 ZIGBEE_PID=$!
 echo "   → Zigbee2MQTT PID: $ZIGBEE_PID"
