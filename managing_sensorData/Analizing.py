@@ -6,8 +6,8 @@ from sklearn.ensemble import IsolationForest
 
 # ─── CONFIG ────────────────────────────────────────────────────────────────────
 
-USE_TEST       = True                        # ← toggle test mode on/off
-TEST_FILE      = '../training.csv'    # ← synthetic CSV you downloaded
+USE_TEST = True                        # ← toggle test mode on/off
+TEST_FILE = '../training.csv'    # ← synthetic CSV you downloaded
 
 DATA_DIR = '../sensor_data'                # where your raw sensor CSVs live
 PUBLIC_DIR = '../frontend/gritter-frontend/public'                   # Next.js serves files here
@@ -29,7 +29,7 @@ while True:
     if USE_TEST:
         min_counts = pd.read_csv(TEST_FILE, parse_dates=['min'])
     else:       
-        # 1) CSV laden 
+        #  CSV laden 
         all_events = [] # holt sich alle csv eventes 
         for fname in os.listdir(DATA_DIR):
             if not fname.endswith('.csv'):
@@ -57,14 +57,15 @@ while True:
             time.sleep(CHECK_INTERVAL)
             continue
 
-    events = pd.concat(all_events, ignore_index=True)
+        events = pd.concat(all_events, ignore_index=True)
 
-    events['min'] = events['timestamp'].dt.floor('min')  # damals 'T' wurde modern mit min ersetzt
-    min_counts = (
-        events.groupby('min').size().reset_index(name='request_count')
-    )
+        events['min'] = events['timestamp'].dt.floor('min')  # damals 'T' wurde modern mit min ersetzt
+        min_counts = (
+            events.groupby('min').size().reset_index(name='request_count')
+        )
 
-    min_counts['is_anomaly'] = False  # placeholder
+        min_counts['is_anomaly'] = False  # 
+    
     min_counts.to_csv(COUNT_FILE, index=False)
 
     if len(min_counts) >= MIN_HISTORY:
