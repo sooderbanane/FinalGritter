@@ -3,15 +3,6 @@ import json
 import os
 import paho.mqtt.client as mqtt
 from datetime import datetime
-from sklearn.ensemble import IsolationForest
-import schedule 
-import time 
-import threading 
-import os 
-from datetime import datetime, timedelta
-import pandas as pd 
-
-
 
 
 MQTT_BROKER = "localhost"
@@ -58,34 +49,6 @@ def append_to_csv(filename, data_dict, topic):
         writer = csv.DictWriter(file, fieldnames=current_header)
         writer.writerow(data_dict)
 
-def detect_anomalies():
-    for topic in MQTT_TOPICS:
-        filename = topic_filename(topic)
-        try: 
-            df = pd.read_csv(filename, parse_dates=['timestamp'])
-            now = datetime.now()
-            one_hour_ago = now - timedelta(hours=1)
-            recent_data = df[df['timestamp'] >= one_hour_ago.isoformat()]
-            if recent_data.empty:
-                print("no data from last hour")
-                return 
-           
-
-            model = IsolationForest(contamination = 0.1, random_state = 42)
-            recent_data['anomaly'] = model.fit_predict(recent_data[['value']])
-            anomalies = recent_data[recent_data['anomaly'] == -1]
-            print(f"[{now}] Detected {len(anomalies)} anomalies:\n{anomalies}")
-        except Exception as e:
-            print("Anomalie Detection failed: " + str(e) ) 
-
-
-schedule.every().hour.at(":00").do(detect_anomalies)
-def run_Schedule():
-    while True:
-        schedule.run_pending()
-        time.sleep(1)
-
-threading.Thread(target=run_Schedule, deamon=True).start()
 
 def on_connect(client, userdata, flag, rc):
     print(f"Connected to result code{rc}")
