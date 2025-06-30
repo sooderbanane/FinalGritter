@@ -7,9 +7,9 @@ from sklearn.ensemble import IsolationForest
 # ─── CONFIG ────────────────────────────────────────────────────────────────────
 
 USE_TEST = True                        # ← toggle test mode on/off
-TEST_FILE = '../training.csv'    # ← synthetic CSV you downloaded
+TEST_FILE = './training.csv'    # ← synthetic CSV you downloaded
 
-DATA_DIR = '../sensor_data'                # where your raw sensor CSVs live
+DATA_DIR = './sensor_data'                # where your raw sensor CSVs live
 PUBLIC_DIR = '../frontend/gritter-frontend/public'                   # Next.js serves files here
 COUNT_FILE = os.path.join(PUBLIC_DIR, 'minute_counts.csv')
 ANOM_FILE  = os.path.join(PUBLIC_DIR, 'minute_anomalies.csv')
