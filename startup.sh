@@ -28,6 +28,13 @@ cleanup() {
 }
 trap cleanup SIGINT SIGTERM
 
+echo "🟢 Starting Zigbee2MQTT…"
+# If you need to cd into its folder, do: cd /path/to/zigbee2mqtt
+$ZIGBEE2MQTT_CMD &
+ZIGBEE_PID=$!
+echo "   → Zigbee2MQTT PID: $ZIGBEE_PID"
+
+
 echo "🚀 Activating Python venv (if present)…"
 if [[ -f "$VENV_DIR/bin/activate" ]]; then
   # shellcheck source=/dev/null
@@ -47,11 +54,6 @@ python "$fromMQTTtocsv" &
 PY_PID=$!
 echo "   → Other script PID: $OTHER_PID"
 
-echo "🟢 Starting Zigbee2MQTT…"
-# If you need to cd into its folder, do: cd /path/to/zigbee2mqtt
-$ZIGBEE2MQTT_CMD &
-ZIGBEE_PID=$!
-echo "   → Zigbee2MQTT PID: $ZIGBEE_PID"
 
 echo "🟢 Starting Next.js frontend…"
 cd "$FRONTEND_DIR"
