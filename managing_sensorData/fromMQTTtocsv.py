@@ -9,12 +9,13 @@ MQTT_BROKER = "localhost"
 MQTT_PORT = 1883
 MQTT_TOPICS = ["zigbee2mqtt/switch_1","zigbee2mqtt/door_1","zigbee2mqtt/door_2","zigbee2mqtt/door_3","zigbee2mqtt/door_4","zigbee2mqtt/temp_1"]
 
-DATA_DIR = "../sensor_data"
+DATA_DIR = "./sensor_data"
 os.makedirs(DATA_DIR, exist_ok=True)
 
 def topic_filename(topic):
-    return topic.replace("/", "_") + ".csv" 
-
+    filename = topic.replace("/", "_") + ".csv" 
+    return os.path.join(DATA_DIR, filename)
+ 
 def does_csv_file_exists(filename, fieldnames):
     if not os.path.exists(filename):
         with open(filename, mode='w', newline='') as file:
