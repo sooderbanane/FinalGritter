@@ -1,123 +1,126 @@
 import os
+import sys
 import time
 from datetime import datetime
 import pandas as pd
 from sklearn.ensemble import IsolationForest
 
 # ─── CONFIG ────────────────────────────────────────────────────────────────────
-USE_TEST       = True                        # ← toggle test mode on/off
-TEST_FILE      = './training.csv'             # ← synthetic CSV you downloaded (ensure this path is correct)
+USE_TEST       = True  # toggle test mode on/off (wenn True, lade die Testdaten)
+# Pfad zur synthetischen CSV (anpassen basierend auf diesem Skript-Standort):
+TEST_FILE = os.path.join(os.path.dirname(__file__), '..', 'simData', 'minute_counts_test.csv')  # sicherstellen, dass diese Datei existiert
 
-DATA_DIR       = './sensor_data'             # where your raw sensor CSVs live (ensure folder exists)
-PUBLIC_DIR     = '../frontend/gritter-frontend/public'  # Next.js static folder (ensure path from here)
+DATA_DIR       = os.path.join(os.path.dirname(__file__), '..', 'sensor_data')  # wo die Rohdaten liegen
+# Next.js public-Ordner im Frontend-Projekt:
+PUBLIC_DIR     = os.path.join(os.path.dirname(__file__), '..', 'frontend', 'gritter-frontend', 'public')
 COUNT_FILE     = os.path.join(PUBLIC_DIR, 'minute_counts.csv')
 ANOM_FILE      = os.path.join(PUBLIC_DIR, 'minute_anomalies.csv')
-CHECK_INTERVAL = 10                          # seconds between each loop iteration
-MIN_HISTORY    = 5                           # number of minutes before anomaly detection starts
+CHECK_INTERVAL = 10  # Sekunden zwischen den Überprüfungen
+MIN_HISTORY    = 5   # benötigte Minuten Historie vor dem Erkennen von Anomalien
 # ────────────────────────────────────────────────────────────────────────────────
 
-# Ensure the output directory exists before writing
+# Stelle sicher, dass der Ausgabeordner existiert
 os.makedirs(PUBLIC_DIR, exist_ok=True)
 
-# Keep track of which minutes have already been processed
-generated_mins = set()
+# Verifiziere, dass die Testdatei existiert, wenn USE_TEST aktiviert ist
+if USE_TEST and not os.path.exists(TEST_FILE):
+    print(f"❌ Test file not found: {TEST_FILE}")
+    sys.exit(1)
+
+processed_mins = set()  # verfolgt, welche Minuten bereits verarbeitet wurden
 
 while True:
     now = datetime.now()
     print(f"\n[+] Checking data at {now.isoformat(timespec='seconds')}")
 
-    # ── 1) Prepare minute_counts: load test CSV or aggregate raw data ────────
+    # ── 1) Vorbereitung der minute_counts ───────────────────────────────────
     if USE_TEST:
-        # Load precomputed synthetic test data
-        # TEST_FILE must contain columns: min, request_count, is_anomaly
+        # Lade vorkomputierte synthetische Daten für Tests
+        # TEST_FILE muss die Spalten: min, request_count, is_anomaly enthalten
         min_counts = pd.read_csv(TEST_FILE, parse_dates=['min'])
     else:
-        #  CSV laden: load all sensor CSVs from DATA_DIR
-        all_events = []  # collects events from each file
+        #  CSV laden und filtern
+        all_events = []  # holt sich alle csv events
         for fname in os.listdir(DATA_DIR):
             if not fname.endswith('.csv'):
                 continue
             path = os.path.join(DATA_DIR, fname)
             df = pd.read_csv(path, parse_dates=['timestamp'])
 
-            # Remove duplicate Zigbee timestamp column if present
+            # unnötige falsche Spalte entfernen
             if 'timestamp.1' in df.columns:
                 df = df.drop(columns=['timestamp.1'])
 
-            # Filter correct rows: door opens or single button presses
+            # Filter: Tür-Öffnungen oder einzelne Button-Presses
             if 'contact' in df.columns:
-                df = df[df['contact'] == True]
+                df = df[df['contact'] == True]  # nur True behalten
             elif 'action' in df.columns:
-                df = df[df['action'] == 'single']
+                df = df[df['action'] == 'single']  # nur "single" behalten
             else:
                 continue
 
-            df['sensor'] = fname  # tag with sensor filename
-            # Keep only timestamp and sensor for counting
+            df['sensor'] = fname  # Sensor-Dateiname taggen
             all_events.append(df[['timestamp', 'sensor']])
 
-        # If no events found, wait and retry
+        # Wenn keine Events gefunden, warte
         if not all_events:
-            print("⚠️  No event files found—waiting...")
+            print("⚠️ No event files found—waiting...")
             time.sleep(CHECK_INTERVAL)
             continue
 
-        # Merge all events into one DataFrame
+        # Alle Events zu einem DataFrame zusammenfassen
         events = pd.concat(all_events, ignore_index=True)
-        # Group by minute: floor timestamps to minute resolution
-        events['min'] = events['timestamp'].dt.floor('min')
-        # Count events per minute
+        events['min'] = events['timestamp'].dt.floor('min')  # auf Minute abrunden
+        # nach Minute gruppieren und zählen
         min_counts = (
             events.groupby('min')
                   .size()
                   .reset_index(name='request_count')
         )
-        # Initialize anomaly flag to False for all rows
-        min_counts['is_anomaly'] = False
+        min_counts['is_anomaly'] = False  # Platzhalter: noch kein Anomalie-Flag gesetzt
 
-    # ── 2) Write full time-series CSV for frontend ─────────────────────────
-    # Overwrite minute_counts.csv so frontend sees fresh data
-    min_counts.to_csv(COUNT_FILE, index=False)
+    # ── 2) Schreibe die Vollserie für das Frontend ─────────────────────────
+    min_counts.to_csv(COUNT_FILE, index=False)  # überschreibe minute_counts.csv
 
-    # ── 3) Run anomaly detection on the latest minute ───────────────────────
+    # ── 3) Erkenne Anomalien in der letzten Minute ─────────────────────────
     if len(min_counts) >= MIN_HISTORY:
         last_min = min_counts['min'].max()
-        # Only check each minute once, and only after it’s fully elapsed
-        if last_min not in generated_mins and last_min < now.replace(second=0, microsecond=0):
-            train = min_counts.iloc[:-1]          # all but newest minute
-            test  = min_counts.iloc[-1:].copy()   # only newest minute
+        # nur einmal pro Minute und nur, wenn die Minute vorbei ist
+        if last_min not in processed_mins and last_min < now.replace(second=0, microsecond=0):
+            train = min_counts.iloc[:-1]         # alle bis auf die letzte Minute
+            test  = min_counts.iloc[-1:].copy()  # nur die letzte Minute
 
-            # Train Isolation Forest on historical counts
+            # IsolationForest trainieren
             model = IsolationForest(contamination=0.05, random_state=42)
             model.fit(train[['request_count']])
 
-            # Predict anomaly for the newest minute
+            # Anomalie-Vorhersage für die letzte Minute
             test['is_anomaly'] = model.predict(test[['request_count']]) == -1
 
-            # Update full series with the anomaly flag
+            # Vollserie updaten mit dem Flag
             is_anom = test.at[test.index[0], 'is_anomaly']
             min_counts.loc[min_counts['min'] == last_min, 'is_anomaly'] = is_anom
             min_counts.to_csv(COUNT_FILE, index=False)
 
-            # Append only true anomalies to anomalies CSV
+            # falls Anomalie, in separate Datei anhängen
             if is_anom:
                 print(f"⚠️ ANOMALY at {last_min}: {test.at[test.index[0], 'request_count']} events")
-                write_header = not os.path.exists(ANOM_FILE)
-                test[['min', 'request_count', 'is_anomaly']].to_csv(
+                write_header = not os.path.exists(ANOM_FILE)  # nur einmal Header schreiben
+                test[['min','request_count','is_anomaly']].to_csv(
                     ANOM_FILE,
-                    mode='a',         # append mode
-                    header=write_header,  # add header only if file is new
+                    mode='a',
+                    header=write_header,
                     index=False
                 )
             else:
                 print(f"✅ Normal at {last_min}: {test.at[test.index[0], 'request_count']} events")
 
-            generated_mins.add(last_min)
+            processed_mins.add(last_min)
         else:
-            print(f"[+] Minute {last_min} already processed or still in progress")
+            print(f"[+] Minute {last_min} already processed or not complete")
     else:
         needed = MIN_HISTORY - len(min_counts)
-        print(f"ℹ️  Need {needed} more minutes before detecting anomalies")
+        print(f"ℹ️ Need {needed} more minutes before detecting anomalies")
 
-    # Sleep until next check
+    # Sleep bis zum nächsten Check
     time.sleep(CHECK_INTERVAL)
